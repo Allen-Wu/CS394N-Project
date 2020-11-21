@@ -134,10 +134,11 @@ batch_size = 1
 checkpoint_filepath = '/tmp/checkpoint'
 model_checkpoint_callback = tf.keras.callbacks.ModelCheckpoint(
     filepath=checkpoint_filepath,
-    save_weights_only=True,
-    monitor='val_accuracy',
-    mode='max',
-    save_best_only=True)
+    save_weights_only=False,
+    monitor='val_loss',
+    mode='min',
+    save_best_only=True,
+    save_freq='epoch')
 
 bert_model.fit(train_input,
                train_label,
