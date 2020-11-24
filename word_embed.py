@@ -5,6 +5,8 @@ import tensorflow as tf
 from sklearn.feature_extraction.text import TfidfTransformer
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.model_selection import train_test_split
+from transformers import BertTokenizer
+
 import model
 
 words_list = []
@@ -56,7 +58,6 @@ with open('mbti_preprocessed.csv') as csvfile:
                     words_dict[w] = 1
                 else:
                     words_dict[w] += 1
-        # print(words)
         words_list.append(words)
 
 print('# of unique words: {}'.format(str(unique_word_cnt)))
@@ -74,6 +75,7 @@ assert len(words_dict) == unique_word_cnt
 text_lists = np.array(text_lists)
 type_idx_list = np.array(type_idx_list)
 type_idx_list = type_idx_list.reshape([len(type_idx_list), 1])
+
 # Word counting
 cntizer = CountVectorizer(analyzer="word",
                           max_features=512,
@@ -85,13 +87,42 @@ cntizer = CountVectorizer(analyzer="word",
 
 # Learn the vocabulary dictionary and return term-document matrix
 X_cnt = cntizer.fit_transform(text_lists)
-feature_names = cntizer.get_feature_names()
+top_feature_names = cntizer.get_feature_names()
+
+
+def remove_extra_words(str):
+    words = str.split()
+    if len(words) <= 512:
+        return str
+    w = []
+    for word in words:
+        if word in top_feature_names:
+            w.append(word)
+    # Truncate to 512
+    if len(w) > 512:
+        del w[512:]
+    return ' '.join(w)
+
+
+# Use BERT tokenizer to generate input_ids
+text_lists = text_lists.tolist()
+tokenizer = BertTokenizer.from_pretrained("bert-large-uncased")
+for i in range(len(text_lists)):
+    t = remove_extra_words(text_lists[i])
+    tokens = tokenizer(t)['input_ids']
+    if len(tokens) > 512:
+        del tokens[512:]
+    elif len(tokens) < 512:
+        tokens.extend([0] * (512 - len(tokens)))
+    text_lists[i] = tokens
+
+X_tfidf = np.array(text_lists)
 
 # Transform the count matrix to a normalized tf or tf-idf representation
-tfizer = TfidfTransformer()
+# tfizer = TfidfTransformer()
 
 # Learn the idf vector (fit) and transform a count matrix to a tf-idf representation
-X_tfidf = tfizer.fit_transform(X_cnt).toarray()
+# X_tfidf = tfizer.fit_transform(X_cnt).toarray()
 
 all_data = np.append(X_tfidf, type_idx_list, 1)
 
