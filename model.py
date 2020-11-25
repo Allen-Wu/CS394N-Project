@@ -4,9 +4,9 @@ import transformers
 import tensorflow as tf
 
 # BERT based model
-def create_model():
-    maxlen = 512
-    input_word_ids = tf.keras.layers.Input(shape=(maxlen,), dtype=tf.int32,
+def create_model(max_len):
+    # maxlen = 512
+    input_word_ids = tf.keras.layers.Input(shape=(max_len), dtype=tf.int32,
                                            name="input_word_ids")
     bert_layer = transformers.TFBertModel.from_pretrained('bert-large-uncased')
     bert_outputs = bert_layer(input_word_ids)[0]

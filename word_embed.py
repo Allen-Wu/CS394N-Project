@@ -82,7 +82,7 @@ cntizer = CountVectorizer(analyzer="word",
                           tokenizer=None,
                           preprocessor=None,
                           stop_words=None,
-                          max_df=0.7,
+                          max_df=0.9,
                           min_df=0.1)
 
 # Learn the vocabulary dictionary and return term-document matrix
@@ -136,11 +136,11 @@ print('Validation set shape: {}'.format(str(val.shape)))
 print('Test set shape: {}'.format(str(test.shape)))
 
 def idx_to_one_hot_vec(X):
-    X = X.astype('int32')
+    # X = X.astype('int32')
     vec = np.zeros([len(X), 16])
     for i in range(len(X)):
         vec[i][X[i]] = 1
-    vec = vec.astype('int32')
+    # vec = vec.astype('int32')
     return vec
 
 train_input = train[:, :-1]
@@ -158,9 +158,9 @@ test_label = idx_to_one_hot_vec(test_label)
 print(train_input.shape)
 print(train_label.shape)
 
-bert_model = model.create_model()
+batch_size = 4
 
-batch_size = 1
+bert_model = model.create_model(512)
 
 checkpoint_filepath = '/tmp/checkpoint'
 model_checkpoint_callback = tf.keras.callbacks.ModelCheckpoint(
