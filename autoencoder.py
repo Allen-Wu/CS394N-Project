@@ -65,13 +65,13 @@ print("Sequence length for output text:", embed_text_len)
 #     (len(input_reddit_vec), reddit_vec_len, reddit_cnt_voc_size), dtype="float16"
 # )
 encoder_input_data = np.array(input_reddit_vec, dtype='float16')
-encoder_input_data = tf.convert_to_tensor(encoder_input_data)
+# encoder_input_data = tf.convert_to_tensor(encoder_input_data)
 # Decoder output is embeded text
 # decoder_input_data = np.zeros(
 #     (len(input_texts), embed_text_len, embed_text_voc_size), dtype="float16"
 # )
 decoder_input_data = np.array(input_texts, dtype='float16')
-decoder_input_data = tf.convert_to_tensor(decoder_input_data)
+# decoder_input_data = tf.convert_to_tensor(decoder_input_data)
 # for i, (reddit_vec, embed_text_vec) in enumerate(zip(input_reddit_vec, input_texts)):
 #     for t, char in enumerate(reddit_vec):
 #         encoder_input_data[i, t, reddit_cnt_voc[char]] = 1.0
@@ -131,9 +131,17 @@ def build_model(num_encoder_tokens, num_decoder_tokens, latent_dim):
     # Define the model that will turn
     # `encoder_input_data` & `decoder_input_data` into `decoder_target_data`
     model = tf.keras.Model([e_i, d_i], decoder_outputs)
+    print(model.summary())
 
     return model
 
+    
+def dataset_generator():
+    encoder_input_data = tf.convert_to_tensor(encoder_input_data)
+    decoder_input_data = tf.convert_to_tensor(decoder_input_data)
+    inputs = (encoder_input_data, decoder_input_data)
+    outputs = tf.sparse.to_dense(decoder_target_data)
+    return inputs, outputs
 
 def train_model():
     batch_size = 16
@@ -145,8 +153,15 @@ def train_model():
     model.compile(
         optimizer="rmsprop", loss="categorical_crossentropy", metrics=["accuracy"]
     )
-    ds = tf.data.Dataset.from_tensor_slices(
-        ({"input_1": encoder_input_data, "input_2": decoder_input_data}, tf.sparse.to_dense(decoder_target_data)))
+
+    ds_types = ((tf.float16, tf.float16), tf.float16)
+    ds_shapes = (([len(input_reddit_vec), len(input_reddit_vec[0])], 
+                  [len(input_texts), len(input_texts[0])]),
+                  [len(input_texts), len(input_texts[0]), embed_text_voc_size])
+
+    ds = tf.data.Dataset.from_generator(dataset_generator,
+                                        output_types=ds_types,
+                                        output_shapes=ds_shapes)
     
     # Split into train and validation sets
     train_size = int(0.8 * len(input_reddit_vec))
