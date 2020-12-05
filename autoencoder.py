@@ -138,3 +138,6 @@ model.fit(
     epochs=epochs,
     validation_split=0.2,
 )
+
+# Save model
+model.save("s2s")
