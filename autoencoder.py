@@ -92,7 +92,7 @@ decoder_target_data_val = []
 for i, embed_text_vec in enumerate(input_texts):
     for t, char in enumerate(embed_text_vec):
         decoder_target_data_idx.append([i, t, char])
-        decoder_target_data_val.append(reverse_embed_text_voc[char])
+        decoder_target_data_val.append(char)
 
 decoder_target_data = tf.sparse.SparseTensor(indices=decoder_target_data_idx,
                                              values=decoder_target_data_val,
