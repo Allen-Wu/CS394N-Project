@@ -65,12 +65,13 @@ print("Sequence length for output text:", embed_text_len)
 #     (len(input_reddit_vec), reddit_vec_len, reddit_cnt_voc_size), dtype="float16"
 # )
 encoder_input_data = np.array(input_reddit_vec, dtype='float16')
+encoder_input_data = tf.convert_to_tensor(encoder_input_data)
 # Decoder output is embeded text
 # decoder_input_data = np.zeros(
 #     (len(input_texts), embed_text_len, embed_text_voc_size), dtype="float16"
 # )
 decoder_input_data = np.array(input_texts, dtype='float16')
-
+decoder_input_data = tf.convert_to_tensor(decoder_input_data)
 # for i, (reddit_vec, embed_text_vec) in enumerate(zip(input_reddit_vec, input_texts)):
 #     for t, char in enumerate(reddit_vec):
 #         encoder_input_data[i, t, reddit_cnt_voc[char]] = 1.0
@@ -97,7 +98,6 @@ for i, embed_text_vec in enumerate(input_texts):
 decoder_target_data = tf.sparse.SparseTensor(indices=decoder_target_data_idx,
                                              values=decoder_target_data_val,
                                              dense_shape=[len(input_texts), embed_text_len, embed_text_voc_size])
-
 
 def build_model(num_encoder_tokens, num_decoder_tokens, latent_dim):
     # Define an input sequence and process it.
@@ -145,12 +145,20 @@ def train_model():
     model.compile(
         optimizer="rmsprop", loss="categorical_crossentropy", metrics=["accuracy"]
     )
+    ds = tf.data.Dataset.from_tensor_slices(
+        ({"input_1": encoder_input_data, "input_2": decoder_input_data}, tf.sparse.to_dense(decoder_target_data)))
+    
+    # Split into train and validation sets
+    train_size = int(0.8 * len(input_reddit_vec))
+    ds = ds.shuffle(50)
+    train_data = ds.take(train_size)
+    val_data = ds.skip(train_size)
+
     model.fit(
-        [encoder_input_data, decoder_input_data],
-        tf.sparse.to_dense(decoder_target_data),
+        train_data,
         batch_size=batch_size,
         epochs=epochs,
-        validation_split=0.2,
+        validation_data=val_data,
     )
 
     # Save model
