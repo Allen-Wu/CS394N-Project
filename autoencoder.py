@@ -78,13 +78,25 @@ decoder_input_data = np.array(input_texts, dtype='float16')
 #     for t, char in enumerate(embed_text_vec):
 #         decoder_input_data[i, t, embed_text_voc[char]] = 1.0
 
-decoder_target_data = np.zeros(
-    (len(input_texts), embed_text_len, embed_text_voc_size), dtype="float32"
-)
+# decoder_target_data = np.zeros(
+#     (len(input_texts), embed_text_len, embed_text_voc_size), dtype="float32"
+# )
 
+# for i, embed_text_vec in enumerate(input_texts):
+#     for t, char in enumerate(embed_text_vec):
+#         decoder_target_data[i, t, char] = 1.0
+
+# Represent the decoder_target_data in a sparse tensor format
+decoder_target_data_idx = []
+decoder_target_data_val = []
 for i, embed_text_vec in enumerate(input_texts):
     for t, char in enumerate(embed_text_vec):
-        decoder_target_data[i, t, char] = 1.0
+        decoder_target_data_idx.append([i, t, char])
+        decoder_target_data_val.append(reverse_embed_text_voc[char])
+
+decoder_target_data = tf.sparse.SparseTensor(indices=decoder_target_data_idx,
+                                             values=decoder_target_data_val,
+                                             dense_shape=[len(input_texts), embed_text_len, embed_text_voc_size])
 
 
 def build_model(num_encoder_tokens, num_decoder_tokens, latent_dim):
@@ -135,7 +147,7 @@ def train_model():
     )
     model.fit(
         [encoder_input_data, decoder_input_data],
-        decoder_target_data,
+        tf.sparse.to_dense(decoder_target_data),
         batch_size=batch_size,
         epochs=epochs,
         validation_split=0.2,
