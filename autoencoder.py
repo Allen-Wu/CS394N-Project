@@ -28,6 +28,16 @@ with open('sample.csv') as csvfile:
         input_reddit_vec.append(reddit)
         input_texts.append(embed_text)
 
+# Map word-count to its index
+for i in range(len(input_reddit_vec)):
+    for j in range(len(input_reddit_vec[0])):
+        input_reddit_vec[i][j] = reddit_cnt_voc[input_reddit_vec[i][j]]
+
+# Map word-embeded id to its index
+for i in range(len(input_texts)):
+    for j in range(len(input_texts[0])):
+        input_texts[i][j] = embed_text_voc[input_texts[i][j]]
+
 reddit_vec_len = len(input_reddit_vec[0])
 embed_text_len = len(input_texts[0])
 
@@ -44,34 +54,43 @@ print("Sequence length for subreddit inputs:", reddit_vec_len)
 print("Sequence length for output text:", embed_text_len)
 
 # Encoder input is subreddit vector
-encoder_input_data = np.zeros(
-    (len(input_reddit_vec), reddit_vec_len, reddit_cnt_voc_size), dtype="float16"
-)
-# Decoder output is embeded text
-decoder_input_data = np.zeros(
-    (len(input_texts), embed_text_len, embed_text_voc_size), dtype="float16"
-)
-
-# decoder_target_data = np.zeros(
-#     (len(input_texts), embed_text_len, embed_text_voc_size), dtype="float32"
+# encoder_input_data = np.zeros(
+#     (len(input_reddit_vec), reddit_vec_len, reddit_cnt_voc_size), dtype="float16"
 # )
+encoder_input_data = np.array(input_reddit_vec, dtype='float16')
+# Decoder output is embeded text
+# decoder_input_data = np.zeros(
+#     (len(input_texts), embed_text_len, embed_text_voc_size), dtype="float16"
+# )
+decoder_input_data = np.array(input_texts, dtype='float16')
 
 print(encoder_input_data.shape)
 print(decoder_input_data.shape)
 
-for i, (reddit_vec, embed_text_vec) in enumerate(zip(input_reddit_vec, input_texts)):
-    for t, char in enumerate(reddit_vec):
-        encoder_input_data[i, t, reddit_cnt_voc[char]] = 1.0
+# for i, (reddit_vec, embed_text_vec) in enumerate(zip(input_reddit_vec, input_texts)):
+#     for t, char in enumerate(reddit_vec):
+#         encoder_input_data[i, t, reddit_cnt_voc[char]] = 1.0
 
-    for t, char in enumerate(embed_text_vec):
-        decoder_input_data[i, t, embed_text_voc[char]] = 1.0
+#     for t, char in enumerate(embed_text_vec):
+#         decoder_input_data[i, t, embed_text_voc[char]] = 1.0
 
 decoder_target_data = np.copy(decoder_input_data)
 
+decoder_target_data = np.zeros(
+    (len(input_texts), embed_text_len, embed_text_voc_size), dtype="float32"
+)
+
+for i, embed_text_vec in enumerate(input_texts):
+    for t, char in enumerate(embed_text_vec):
+        decoder_target_data[i, t, char] = 1.0
 
 def build_model(num_encoder_tokens, num_decoder_tokens, latent_dim):
     # Define an input sequence and process it.
-    encoder_inputs = tf.keras.Input(shape=(None, num_encoder_tokens))
+    # encoder_inputs = tf.keras.Input(shape=(None, num_encoder_tokens))
+    e_i = tf.keras.Input(shape=(reddit_vec_len))
+    encoder_inputs = tf.keras.layers.Embedding(
+        num_encoder_tokens, num_encoder_tokens, input_length=reddit_vec_len)(e_i)
+
     encoder = tf.keras.layers.LSTM(latent_dim, return_state=True)
     encoder_outputs, state_h, state_c = encoder(encoder_inputs)
 
@@ -79,7 +98,10 @@ def build_model(num_encoder_tokens, num_decoder_tokens, latent_dim):
     encoder_states = [state_h, state_c]
 
     # Set up the decoder, using `encoder_states` as initial state.
-    decoder_inputs = tf.keras.Input(shape=(None, num_decoder_tokens))
+    # decoder_inputs = tf.keras.Input(shape=(None, num_decoder_tokens))
+    d_i = tf.keras.Input(shape=(embed_text_len))
+    decoder_inputs = tf.keras.layers.Embedding(
+        num_decoder_tokens, num_decoder_tokens, input_length=embed_text_len)(d_i)
 
     # We set up our decoder to return full output sequences,
     # and to return internal states as well. We don't use the
@@ -93,7 +115,10 @@ def build_model(num_encoder_tokens, num_decoder_tokens, latent_dim):
 
     # Define the model that will turn
     # `encoder_input_data` & `decoder_input_data` into `decoder_target_data`
-    model = tf.keras.Model([encoder_inputs, decoder_inputs], decoder_outputs)
+    model = tf.keras.Model([e_i, d_i], decoder_outputs)
+
+    # print(model.summary())
+
     return model
 
 
