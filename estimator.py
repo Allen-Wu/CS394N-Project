@@ -2,6 +2,9 @@ import csv
 import numpy as np
 import tensorflow as tf
 
+tf.executing_eagerly()
+tf.config.experimental_run_functions_eagerly(True)
+
 input_reddit_vec = []
 input_texts = []
 
@@ -10,7 +13,7 @@ input_texts = []
 reddit_cnt_voc = {}
 embed_text_voc = {}
 
-with open('datasets_preprocessed2.csv') as csvfile:
+with open('sample.csv') as csvfile:
     readCSV = csv.reader(csvfile, delimiter=',')
     for row in readCSV:
         reddit = row[0][1:-1].replace("'", "").strip().split(',')
@@ -131,42 +134,68 @@ def build_model(num_encoder_tokens, num_decoder_tokens, latent_dim):
     # Define the model that will turn
     # `encoder_input_data` & `decoder_input_data` into `decoder_target_data`
     model = tf.keras.Model([e_i, d_i], decoder_outputs)
-    print(model.summary())
+    # print(model.summary())
 
     return model
 
 def my_input_fn(file_path, batch_size, perform_shuffle=False, repeat_count=1):
-   def decode_csv(line):
-    all_floats = [float()]*8386
-    parsed_line = tf.io.decode_csv(line, record_defaults=all_floats)
-    # string1 = parsed_line[0].numpy()
-    # string2 = parsed_line[1].numpy()
-    # reddit = string1[1:-1].replace("'", "").strip().split(',')
-    # reddit = list(map(int, reddit))
-    # embed_text = string2[1:-1].replace("'", "").strip().split(',')
-    # embed_text = list(map(int, embed_text))
-    encoder_input_data = parsed_line[0:7874]
-    decoder_input_data = parsed_line[7874:8386]
-    print(type(encoder_input_data))
-    print(type(decoder_input_data))
-    feature_names = ['input_1', 'input_2']
-    features = []
-    features.append(encoder_input_data)
-    features.append(decoder_input_data)
-    feature_dict = dict(zip(feature_names, features))
-    return feature_dict, decoder_input_data
 
-   dataset = (tf.data.TextLineDataset(file_path) # Read text file
-       .map(decode_csv)) # Transform each elem by applying decode_csv fn
-   if perform_shuffle:
-       # Randomizes input using a window of 256 elements (read into memory)
-       dataset = dataset.shuffle(buffer_size=32*batch_size)
-   dataset = dataset.repeat(repeat_count) # Repeats dataset this # times
-   dataset = dataset.batch(batch_size)  # Batch size to use
-   dataset = dataset.prefetch(batch_size)
-   iterator = tf.compat.v1.data.make_one_shot_iterator(dataset)
-   batch_features, batch_labels = iterator.get_next()
-   return batch_features, batch_labels
+    def decode_csv(line):
+        tf.executing_eagerly()
+        # print('---------------DEBUG---------------')
+        all_floats = [float()]*8386
+        parsed_line = tf.io.decode_csv(line, record_defaults=all_floats)
+        # string1 = parsed_line[0].numpy()
+        # string2 = parsed_line[1].numpy()
+        # reddit = string1[1:-1].replace("'", "").strip().split(',')
+        # reddit = list(map(int, reddit))
+        # embed_text = string2[1:-1].replace("'", "").strip().split(',')
+        # embed_text = list(map(int, embed_text))
+        encoder_input_data = parsed_line[0:7874]
+        decoder_input_data = parsed_line[7874:8386]
+        encoder_input_data.set_shape([reddit_vec_len])
+        decoder_input_data.set_shape([embed_text_len])
+        # print((encoder_input_data[0]).numpy())
+        # print((decoder_input_data[0]).numpy())
+        feature_names = ['input_1', 'input_2']
+        features = []
+        features.append(encoder_input_data)
+        features.append(decoder_input_data)
+        feature_dict = dict(zip(feature_names, features))
+        print(feature_dict.shape)
+        return feature_dict, decoder_input_data
+
+    def decode_csv_wrapper(line):
+        feature_dict, decoder_target_data = tf.py_function(
+            func=decode_csv, inp=[line], Tout=[tf.float32, tf.float32])
+        print(feature_dict.shape)
+        feature_dict.set_shape([reddit_vec_len + embed_text_len])
+        # feature_dict[0].set_shape([reddit_vec_len])
+        # feature_dict[1].set_shape([embed_text_len])
+        decoder_target_data.set_shape([embed_text_len])
+        return feature_dict, decoder_target_data
+
+    def test_func(line):
+        # return (line.numpy(), line.numpy())
+        input_zeros = [np.zeros(1, reddit_vec_len), np.zeros(1, embed_text_len)]
+        output_zeros = np.zeros(1, embed_text_len, embed_text_voc_size)
+        return (input_zeros, output_zeros)
+
+    tf.executing_eagerly()
+    dataset = (tf.data.TextLineDataset(file_path) # Read text file
+               .map(decode_csv_wrapper))  # Transform each elem by applying decode_csv fn
+    # dataset = tf.data.TextLineDataset(file_path).map(lambda x: tf.py_function(
+    #     func=test_func, inp=[x], Tout=[tf.float32, tf.float32]))
+    print('---------------DEBUG---------------')
+    if perform_shuffle:
+        # Randomizes input using a window of 256 elements (read into memory)
+        dataset = dataset.shuffle(buffer_size=32*batch_size)
+    dataset = dataset.repeat(repeat_count) # Repeats dataset this # times
+    dataset = dataset.batch(batch_size)  # Batch size to use
+    dataset = dataset.prefetch(batch_size)
+    iterator = tf.compat.v1.data.make_one_shot_iterator(dataset)
+    batch_features, batch_labels = iterator.get_next()
+    return batch_features, batch_labels
 
     
 def dataset_generator():
@@ -184,12 +213,15 @@ def train_model():
                         embed_text_voc_size,
                         256)
     model.compile(
-        optimizer="rmsprop", loss="categorical_crossentropy", metrics=["accuracy"]
+        optimizer="rmsprop",
+        loss="categorical_crossentropy",
+        metrics=["accuracy"],
+        run_eagerly=True
     )
 
-    input_file_path ='/work/06885/zc3968/frontera/NNProject/CS394N-Project/preprocess/new_datasets2.csv'
+    input_file_path = '/home/shiyu/CS394N/CS394N-Project/sample_new.csv'
 
-    checkpoint_filepath = '/work/06885/zc3968/frontera/NNProject/CS394N-Project/estimator/checkpoint'
+    checkpoint_filepath = '/home/shiyu/CS394N/CS394N-Project/checkpoint'
 
     estimator = tf.keras.estimator.model_to_estimator(keras_model=model, model_dir=checkpoint_filepath)
 
