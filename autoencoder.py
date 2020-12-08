@@ -10,6 +10,11 @@ input_texts = []
 reddit_cnt_voc = {}
 embed_text_voc = {}
 
+# Decoder input data: Start token in the beginning, end token in the end
+# Decoder target data: Two end tokens in the end
+start_token = 7877
+end_token = 7876
+
 with open('sample.csv') as csvfile:
     readCSV = csv.reader(csvfile, delimiter=',')
     for row in readCSV:
@@ -27,6 +32,11 @@ with open('sample.csv') as csvfile:
         
         input_reddit_vec.append(reddit)
         input_texts.append(embed_text)
+    embed_text_voc[start_token] = len(embed_text_voc)
+    embed_text_voc[end_token] = len(embed_text_voc)
+
+start_token_idx = embed_text_voc[start_token]
+end_token_idx = embed_text_voc[end_token]
 
 # Map word-count to its index
 for i in range(len(input_reddit_vec)):
@@ -46,7 +56,7 @@ reverse_embed_text_voc = dict((i, char)
                               for char, i in embed_text_voc.items())
 
 reddit_vec_len = len(input_reddit_vec[0])
-embed_text_len = len(input_texts[0])
+embed_text_len = len(input_texts[0]) + 2
 
 reddit_cnt_voc_size = len(reddit_cnt_voc)
 embed_text_voc_size = len(embed_text_voc)
@@ -71,6 +81,12 @@ encoder_input_data = np.array(input_reddit_vec, dtype='float16')
 #     (len(input_texts), embed_text_len, embed_text_voc_size), dtype="float16"
 # )
 decoder_input_data = np.array(input_texts, dtype='float16')
+# Add start token
+decoder_input_data = np.hstack((np.ones(
+    (len(input_texts), 1), dtype='float16')*start_token_idx, decoder_input_data))
+# Add end token
+decoder_input_data = np.hstack((decoder_input_data, np.ones(
+    (len(input_texts), 1), dtype='float16')*end_token_idx))
 # decoder_input_data = tf.convert_to_tensor(decoder_input_data)
 # for i, (reddit_vec, embed_text_vec) in enumerate(zip(input_reddit_vec, input_texts)):
 #     for t, char in enumerate(reddit_vec):
@@ -94,6 +110,10 @@ for i, embed_text_vec in enumerate(input_texts):
     for t, char in enumerate(embed_text_vec):
         decoder_target_data_idx.append([i, t, char])
         decoder_target_data_val.append(char)
+    decoder_target_data_idx.append([i, t+1, end_token_idx])
+    decoder_target_data_val.append(end_token_idx)
+    decoder_target_data_idx.append([i, t+2, end_token_idx])
+    decoder_target_data_val.append(end_token_idx)
 
 decoder_target_data = tf.sparse.SparseTensor(indices=decoder_target_data_idx,
                                              values=decoder_target_data_val,
@@ -155,9 +175,9 @@ def train_model():
     )
 
     ds_types = ((tf.float16, tf.float16), tf.float16)
-    ds_shapes = (([len(input_reddit_vec), len(input_reddit_vec[0])], 
-                  [len(input_texts), len(input_texts[0])]),
-                  [len(input_texts), len(input_texts[0]), embed_text_voc_size])
+    ds_shapes = (([len(input_reddit_vec), reddit_vec_len],
+                  [len(input_texts), embed_text_len]),
+                  [len(input_texts), embed_text_len, embed_text_voc_size])
 
     ds = tf.data.Dataset.from_generator(dataset_generator,
                                         output_types=ds_types,
