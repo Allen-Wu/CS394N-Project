@@ -2,8 +2,8 @@ import csv
 import numpy as np
 import tensorflow as tf
 
-tf.executing_eagerly()
-tf.config.experimental_run_functions_eagerly(True)
+# tf.executing_eagerly()
+# tf.config.experimental_run_functions_eagerly(True)
 
 input_reddit_vec = []
 input_texts = []
@@ -141,8 +141,8 @@ def build_model(num_encoder_tokens, num_decoder_tokens, latent_dim):
 def my_input_fn(file_path, batch_size, perform_shuffle=False, repeat_count=1):
 
     def decode_csv(line):
-        tf.executing_eagerly()
         # print('---------------DEBUG---------------')
+        tf.config.experimental_run_functions_eagerly(True)
         all_floats = [float()]*8386
         parsed_line = tf.io.decode_csv(line, record_defaults=all_floats)
         # string1 = parsed_line[0].numpy()
@@ -157,6 +157,7 @@ def my_input_fn(file_path, batch_size, perform_shuffle=False, repeat_count=1):
         decoder_input_data.set_shape([embed_text_len])
         # print((encoder_input_data[0]).numpy())
         # print((decoder_input_data[0]).numpy())
+        tf.print(encoder_input_data[0])
         feature_names = ['input_1', 'input_2']
         features = []
         features.append(encoder_input_data)
@@ -172,14 +173,22 @@ def my_input_fn(file_path, batch_size, perform_shuffle=False, repeat_count=1):
         feature_dict.set_shape([reddit_vec_len + embed_text_len])
         # feature_dict[0].set_shape([reddit_vec_len])
         # feature_dict[1].set_shape([embed_text_len])
-        decoder_target_data.set_shape([embed_text_len])
+        decoder_target_data.set_shape([embed_text_len, embed_text_voc_size])
         return feature_dict, decoder_target_data
+        # input_zeros = np.zeros([reddit_vec_len])
+        # input_zeros.set_shape([reddit_vec_len])
+        # output_zeros = np.zeros([embed_text_len, embed_text_voc_size])
+        # output_zeros.set_shape([embed_text_len, embed_text_voc_size])
+        # return input_zeros, output_zeros
 
     def test_func(line):
         # return (line.numpy(), line.numpy())
-        input_zeros = [np.zeros(1, reddit_vec_len), np.zeros(1, embed_text_len)]
-        output_zeros = np.zeros(1, embed_text_len, embed_text_voc_size)
-        return (input_zeros, output_zeros)
+        # input_zeros = [np.zeros(1, reddit_vec_len), np.zeros(1, embed_text_len)]
+        input_zeros = np.zeros([reddit_vec_len])
+        input_zeros.set_shape([reddit_vec_len])
+        output_zeros = np.zeros([embed_text_len, embed_text_voc_size])
+        output_zeros.set_shape([embed_text_len, embed_text_voc_size])
+        return input_zeros, output_zeros
 
     tf.executing_eagerly()
     dataset = (tf.data.TextLineDataset(file_path) # Read text file
@@ -216,7 +225,7 @@ def train_model():
         optimizer="rmsprop",
         loss="categorical_crossentropy",
         metrics=["accuracy"],
-        run_eagerly=True
+        run_eagerly=False
     )
 
     input_file_path = '/home/shiyu/CS394N/CS394N-Project/sample_new.csv'
