@@ -1,45 +1,22 @@
 import csv
 import numpy as np
 import tensorflow as tf
+from convert_datasets import csv_preprocess
 
 # tf.executing_eagerly()
 # tf.config.experimental_run_functions_eagerly(True)
 
-input_reddit_vec = []
-input_texts = []
+old_csv_file = '/home/shiyu/CS394N/CS394N-Project/1.csv'
+new_csv_file = '/home/shiyu/CS394N/CS394N-Project/1_new.csv'
+checkpoint_filepath = '/home/shiyu/CS394N/CS394N-Project/checkpoint'
 
-# Count vocabulary size
-# Map from raw input integer into vocabulary index
-reddit_cnt_voc = {}
-embed_text_voc = {}
+reddit_cnt_voc, embed_text_voc, start_token, end_token, reddit_vec_len, embed_text_len = csv_preprocess(
+    old_csv_file, new_csv_file)
 
-with open('sample.csv') as csvfile:
-    readCSV = csv.reader(csvfile, delimiter=',')
-    for row in readCSV:
-        reddit = row[0][1:-1].replace("'", "").strip().split(',')
-        reddit = list(map(int, reddit))
-        for x in reddit:
-            if x not in reddit_cnt_voc:
-                reddit_cnt_voc[x] = len(reddit_cnt_voc)
-
-        embed_text = row[1][1:-1].replace("'", "").strip().split(',')
-        embed_text = list(map(int, embed_text))
-        for w in embed_text:
-            if w not in embed_text_voc:
-                embed_text_voc[w] = len(embed_text_voc)
-        
-        input_reddit_vec.append(reddit)
-        input_texts.append(embed_text)
-
-# Map word-count to its index
-for i in range(len(input_reddit_vec)):
-    for j in range(len(input_reddit_vec[0])):
-        input_reddit_vec[i][j] = reddit_cnt_voc[input_reddit_vec[i][j]]
-
-# Map word-embeded id to its index
-for i in range(len(input_texts)):
-    for j in range(len(input_texts[0])):
-        input_texts[i][j] = embed_text_voc[input_texts[i][j]]
+# Decoder input data: Start token in the beginning, end token in the end
+# Decoder target data: Two end tokens in the end
+start_token_idx = embed_text_voc[start_token]
+end_token_idx = embed_text_voc[end_token]
 
 # Reverse-lookup token index to decode sequences back to
 # something readable.
@@ -48,59 +25,18 @@ reverse_reddit_cnt_voc = dict((i, char)
 reverse_embed_text_voc = dict((i, char)
                               for char, i in embed_text_voc.items())
 
-reddit_vec_len = len(input_reddit_vec[0])
-embed_text_len = len(input_texts[0])
-
 reddit_cnt_voc_size = len(reddit_cnt_voc)
 embed_text_voc_size = len(embed_text_voc)
 
 print(reddit_cnt_voc_size)
 print(embed_text_voc_size)
 
-print("Number of samples:", len(input_reddit_vec))
+# print("Number of samples:", len(input_reddit_vec))
 print("Number of unique subreddit tokens:", reddit_cnt_voc_size)
 print("Number of unique text tokens:", embed_text_voc_size)
 print("Sequence length for subreddit inputs:", reddit_vec_len)
 print("Sequence length for output text:", embed_text_len)
 
-# Encoder input is subreddit vector
-# encoder_input_data = np.zeros(
-#     (len(input_reddit_vec), reddit_vec_len, reddit_cnt_voc_size), dtype="float16"
-# )
-#encoder_input_data = np.array(input_reddit_vec, dtype='float16')
-# encoder_input_data = tf.convert_to_tensor(encoder_input_data)
-# Decoder output is embeded text
-# decoder_input_data = np.zeros(
-#     (len(input_texts), embed_text_len, embed_text_voc_size), dtype="float16"
-# )
-#decoder_input_data = np.array(input_texts, dtype='float16')
-# decoder_input_data = tf.convert_to_tensor(decoder_input_data)
-# for i, (reddit_vec, embed_text_vec) in enumerate(zip(input_reddit_vec, input_texts)):
-#     for t, char in enumerate(reddit_vec):
-#         encoder_input_data[i, t, reddit_cnt_voc[char]] = 1.0
-
-#     for t, char in enumerate(embed_text_vec):
-#         decoder_input_data[i, t, embed_text_voc[char]] = 1.0
-
-# decoder_target_data = np.zeros(
-#     (len(input_texts), embed_text_len, embed_text_voc_size), dtype="float32"
-# )
-
-# for i, embed_text_vec in enumerate(input_texts):
-#     for t, char in enumerate(embed_text_vec):
-#         decoder_target_data[i, t, char] = 1.0
-
-# Represent the decoder_target_data in a sparse tensor format
-# decoder_target_data_idx = []
-# decoder_target_data_val = []
-# for i, embed_text_vec in enumerate(input_texts):
-#     for t, char in enumerate(embed_text_vec):
-#         decoder_target_data_idx.append([i, t, char])
-#         decoder_target_data_val.append(char)
-
-# decoder_target_data = tf.sparse.SparseTensor(indices=decoder_target_data_idx,
-#                                              values=decoder_target_data_val,
-#                                              dense_shape=[len(input_texts), embed_text_len, embed_text_voc_size])
 
 def build_model(num_encoder_tokens, num_decoder_tokens, latent_dim):
     # Define an input sequence and process it.
@@ -134,68 +70,64 @@ def build_model(num_encoder_tokens, num_decoder_tokens, latent_dim):
     # Define the model that will turn
     # `encoder_input_data` & `decoder_input_data` into `decoder_target_data`
     model = tf.keras.Model([e_i, d_i], decoder_outputs)
-    # print(model.summary())
+    print(model.summary())
 
     return model
 
 def my_input_fn(file_path, batch_size, perform_shuffle=False, repeat_count=1):
 
     def decode_csv(line):
-        # print('---------------DEBUG---------------')
-        tf.config.experimental_run_functions_eagerly(True)
-        all_floats = [float()]*8386
+        all_floats = [float()]*(reddit_vec_len + embed_text_len)
         parsed_line = tf.io.decode_csv(line, record_defaults=all_floats)
-        # string1 = parsed_line[0].numpy()
-        # string2 = parsed_line[1].numpy()
-        # reddit = string1[1:-1].replace("'", "").strip().split(',')
-        # reddit = list(map(int, reddit))
-        # embed_text = string2[1:-1].replace("'", "").strip().split(',')
-        # embed_text = list(map(int, embed_text))
-        encoder_input_data = parsed_line[0:7874]
-        decoder_input_data = parsed_line[7874:8386]
-        encoder_input_data.set_shape([reddit_vec_len])
-        decoder_input_data.set_shape([embed_text_len])
-        # print((encoder_input_data[0]).numpy())
-        # print((decoder_input_data[0]).numpy())
-        tf.print(encoder_input_data[0])
+
+        # Transform input token into idx
+        for i in range(reddit_vec_len):
+            parsed_line[i] = tf.constant(reddit_cnt_voc[int(parsed_line[i].numpy())])
+        
+        
+        # Add start token
+        # parsed_line.insert(reddit_vec_len, tf.constant(float(start_token_idx)))
+        for i in range(0, embed_text_len):
+            parsed_line[reddit_vec_len + i] = tf.constant(
+                embed_text_voc[int(parsed_line[reddit_vec_len + i].numpy())])
+
+        
+        # Add end token
+        # parsed_line.append(tf.constant(float(end_token_idx)))
+
+        # Skip first start token
+        decoder_target_data_raw = parsed_line[(reddit_vec_len + 1):]
+
+        decoder_target_data_raw = [x.numpy() for x in decoder_target_data_raw]
+        decoder_target_data_raw.append(np.float32(end_token_idx))
+        decoder_target_data_raw = np.array(decoder_target_data_raw)
+
+        decoder_target_data = np.zeros((embed_text_len, embed_text_voc_size))
+
+        # Manually embed the decoder_target_data
+        for t, char in enumerate(decoder_target_data_raw):
+            decoder_target_data[t, int(char)] = 1.0
+        
+        return parsed_line, decoder_target_data
+
+    def decode_csv_wrapper(line):
+        parsed_line, decoder_target_data = tf.py_function(
+            func=decode_csv, inp=[line], Tout=[tf.float32, tf.float32])
         feature_names = ['input_1', 'input_2']
         features = []
+        encoder_input_data = parsed_line[0:reddit_vec_len]
+        encoder_input_data.set_shape([reddit_vec_len])
+        decoder_input_data = parsed_line[reddit_vec_len:]
+        decoder_input_data.set_shape([embed_text_len])
         features.append(encoder_input_data)
         features.append(decoder_input_data)
         feature_dict = dict(zip(feature_names, features))
-        print(feature_dict.shape)
-        return feature_dict, decoder_input_data
-
-    def decode_csv_wrapper(line):
-        feature_dict, decoder_target_data = tf.py_function(
-            func=decode_csv, inp=[line], Tout=[tf.float32, tf.float32])
-        print(feature_dict.shape)
-        feature_dict.set_shape([reddit_vec_len + embed_text_len])
-        # feature_dict[0].set_shape([reddit_vec_len])
-        # feature_dict[1].set_shape([embed_text_len])
         decoder_target_data.set_shape([embed_text_len, embed_text_voc_size])
         return feature_dict, decoder_target_data
-        # input_zeros = np.zeros([reddit_vec_len])
-        # input_zeros.set_shape([reddit_vec_len])
-        # output_zeros = np.zeros([embed_text_len, embed_text_voc_size])
-        # output_zeros.set_shape([embed_text_len, embed_text_voc_size])
-        # return input_zeros, output_zeros
-
-    def test_func(line):
-        # return (line.numpy(), line.numpy())
-        # input_zeros = [np.zeros(1, reddit_vec_len), np.zeros(1, embed_text_len)]
-        input_zeros = np.zeros([reddit_vec_len])
-        input_zeros.set_shape([reddit_vec_len])
-        output_zeros = np.zeros([embed_text_len, embed_text_voc_size])
-        output_zeros.set_shape([embed_text_len, embed_text_voc_size])
-        return input_zeros, output_zeros
 
     tf.executing_eagerly()
     dataset = (tf.data.TextLineDataset(file_path) # Read text file
                .map(decode_csv_wrapper))  # Transform each elem by applying decode_csv fn
-    # dataset = tf.data.TextLineDataset(file_path).map(lambda x: tf.py_function(
-    #     func=test_func, inp=[x], Tout=[tf.float32, tf.float32]))
-    print('---------------DEBUG---------------')
     if perform_shuffle:
         # Randomizes input using a window of 256 elements (read into memory)
         dataset = dataset.shuffle(buffer_size=32*batch_size)
@@ -206,18 +138,24 @@ def my_input_fn(file_path, batch_size, perform_shuffle=False, repeat_count=1):
     batch_features, batch_labels = iterator.get_next()
     return batch_features, batch_labels
 
-    
-def dataset_generator():
-    encoder_input_data = tf.convert_to_tensor(encoder_input_data)
-    decoder_input_data = tf.convert_to_tensor(decoder_input_data)
-    inputs = (encoder_input_data, decoder_input_data)
-    outputs = tf.sparse.to_dense(decoder_target_data)
-    return inputs, outputs
+
+def serving_input_receiver_fn():
+    """Serving input_fn that builds features from placeholders
+
+    Returns
+    -------
+    tf.estimator.export.ServingInputReceiver
+    """
+    number = tf.placeholder(dtype=tf.float32, shape=[None, 1], name='number')
+    receiver_tensors = {'number': number}
+    features = tf.tile(number, multiples=[1, 2])
+    return tf.estimator.export.ServingInputReceiver(features, receiver_tensors)
+
 
 def train_model():
-    batch_size = 16
-    epochs = 20
-
+    batch_size = 1
+    
+    tf.get_logger().setLevel('INFO')
     model = build_model(reddit_cnt_voc_size,
                         embed_text_voc_size,
                         256)
@@ -225,26 +163,51 @@ def train_model():
         optimizer="rmsprop",
         loss="categorical_crossentropy",
         metrics=["accuracy"],
-        run_eagerly=False
     )
 
-    input_file_path = '/home/shiyu/CS394N/CS394N-Project/sample_new.csv'
+    input_file_path = new_csv_file
 
-    checkpoint_filepath = '/home/shiyu/CS394N/CS394N-Project/checkpoint'
+    config = tf.estimator.RunConfig().replace(log_step_count_steps=1,
+                                              save_checkpoints_steps=10)
 
-    estimator = tf.keras.estimator.model_to_estimator(keras_model=model, model_dir=checkpoint_filepath)
+    estimator = tf.keras.estimator.model_to_estimator(keras_model=model,
+                                                      model_dir=checkpoint_filepath,
+                                                      config=config)
 
-    estimator.train(input_fn=lambda: my_input_fn(input_file_path, batch_size, perform_shuffle=True), steps=320)
+    estimator.train(input_fn=lambda: my_input_fn(input_file_path, batch_size, perform_shuffle=True), steps=10)
 
-    eval_result = estimator.evaluate(input_fn=lambda: my_input_fn(input_file_path, batch_size, perform_shuffle=True), steps=16)
+    eval_result = estimator.evaluate(input_fn=lambda: my_input_fn(input_file_path, batch_size, perform_shuffle=True), steps=2)
 
     print('Eval result: {}'.format(eval_result))
 
+    # estimator.export_saved_model('saved_model', serving_input_receiver_fn)
 
-def build_inference_model():
+
+def inference_input(line):
+    return line
+
+
+def build_inference_model(model_file):
     # Define sampling models
     # Restore the model and construct the encoder and decoder.
-    model = tf.keras.models.load_model("s2s")
+    # model = build_model(reddit_cnt_voc_size,
+    #                     embed_text_voc_size,
+    #                     256)
+    # model = tf.keras.estimator.model_to_estimator(keras_model=model)
+
+    # model = tf.saved_model.load(model_file)
+    model = build_model(reddit_cnt_voc_size,
+                        embed_text_voc_size,
+                        256)
+    model.compile(
+        optimizer="rmsprop",
+        loss="categorical_crossentropy",
+        metrics=["accuracy"],
+    )
+    model.load_weights(model_file)
+    # model = tf.keras.estimator.model_to_estimator(keras_model=model)
+    # model.predict(input_fn=inference_input,
+    #               checkpoint_path=checkpoint_filepath)
 
     # Encoder
     encoder_inputs = model.input[0]  # input_1
@@ -274,41 +237,45 @@ def build_inference_model():
 
 def decode_sequence(input_seq, encoder_model, decoder_model):
     # Encode the input as state vectors.
+    print(encoder_model.summary())
+    print(decoder_model.summary())
     states_value = encoder_model.predict(input_seq)
+    last_h = np.array(states_value[0][-1]).reshape((1, len(states_value[0][-1])))
+    last_c = np.array(states_value[1][-1]).reshape((1, len(states_value[1][-1])))
+    states_value = [last_h, last_c]
 
     # Generate empty target sequence of length 1.
-    target_seq = np.zeros((1, 1, embed_text_voc_size))
-    # Populate the first character of target sequence with the start character.
-    # TODO: Pick a suitable word to start
-    start_token_idx = 100
-    target_seq[0, 0, start_token_idx] = 1.0
+    target_seq = np.ones((1, embed_text_len)) * start_token_idx
 
-    # Sampling loop for a batch of sequences
-    # (to simplify, here we assume a batch of size 1).
-    stop_condition = False
     decoded_sentence = []
-    while not stop_condition:
+    for i in range(embed_text_len):
         output_tokens, h, c = decoder_model.predict(
             [target_seq] + states_value)
 
         # Sample a token
-        sampled_token_index = np.argmax(output_tokens[0, -1, :])
+        sampled_token_index = np.argmax(output_tokens[0, i, :])
         sampled_char = reverse_embed_text_voc[sampled_token_index]
         decoded_sentence.append(sampled_char)
 
-        # Exit condition: either hit max length
-        # or find stop character.
-        if len(decoded_sentence) > embed_text_len:
-            stop_condition = True
-
         # Update the target sequence (of length 1).
-        target_seq = np.zeros((1, 1, embed_text_voc_size))
-        target_seq[0, 0, sampled_token_index] = 1.0
+        target_seq[0][i] = sampled_token_index
 
         # Update states
         states_value = [h, c]
 
     return decoded_sentence
 
+
 # Currently only run training
-train_model()
+# train_model()
+encoder_model, decoder_model = build_inference_model('/home/shiyu/CS394N/CS394N-Project/checkpoint/model1/model.ckpt-1')
+input_seq = []
+with open(new_csv_file, "r") as csvfile:
+    readCSV = csv.reader(csvfile, delimiter=',')
+    for row in readCSV:
+        input_seq = row[0:reddit_vec_len]
+        break
+for i in range(len(input_seq)):
+    input_seq[i] = float(reddit_cnt_voc[int(input_seq[i])])
+print(input_seq)
+print(decode_sequence(np.array(input_seq).reshape(1, len(input_seq)), encoder_model, decoder_model))
