@@ -2,6 +2,7 @@ import csv
 import numpy as np
 import tensorflow as tf
 from convert_datasets import csv_preprocess
+import tqdm
 
 # tf.executing_eagerly()
 # tf.config.experimental_run_functions_eagerly(True)
@@ -180,19 +181,10 @@ def train_model():
     estimator.export_saved_model('saved_model', serving_input_receiver_fn)
 
 
-def inference_input(line):
-    return line
-
-
+# Load saved Keras model
 def build_inference_model(model_file):
     # Define sampling models
     # Restore the model and construct the encoder and decoder.
-    # model = build_model(reddit_cnt_voc_size,
-    #                     embed_text_voc_size,
-    #                     256)
-    # model = tf.keras.estimator.model_to_estimator(keras_model=model)
-
-    # model = tf.saved_model.load(model_file)
     model = build_model(reddit_cnt_voc_size,
                         embed_text_voc_size,
                         256)
@@ -202,10 +194,7 @@ def build_inference_model(model_file):
         metrics=["accuracy"],
     )
     model.load_weights(model_file)
-    # model = tf.keras.estimator.model_to_estimator(keras_model=model)
-    # model.predict(input_fn=inference_input,
-    #               checkpoint_path=checkpoint_filepath)
-
+    
     # Encoder
     encoder_inputs = model.input[0]  # input_1
     encoder_outputs, state_h_enc, state_c_enc = model.layers[4].output  # lstm_1
@@ -232,10 +221,10 @@ def build_inference_model(model_file):
     return encoder_model, decoder_model
 
 
+# Inference based on saved Keras model
 def decode_sequence(input_seq, encoder_model, decoder_model):
     # Encode the input as state vectors.
-    print(encoder_model.summary())
-    print(decoder_model.summary())
+    input_seq = np.reshape(input_seq, (1, len(input_seq)))
     states_value = encoder_model.predict(input_seq)
     last_h = np.array(states_value[0][-1]).reshape((1, len(states_value[0][-1])))
     last_c = np.array(states_value[1][-1]).reshape((1, len(states_value[1][-1])))
@@ -260,45 +249,82 @@ def decode_sequence(input_seq, encoder_model, decoder_model):
         # Update states
         states_value = [h, c]
 
-    return decoded_sentence
+    return np.array(decoded_sentence)
 
 
-def estimator_inference(model_file):
-    predict_fn = tf.saved_model.load(model_file)
-    print(type(predict_fn))
-    return predict_fn
-    # for nb in my_service():
-    #     pred = predict_fn({'number': [[nb]]})['output']
+def reddit_vec_to_embed_text(reddit_csv_file, encoder_model, decoder_model):
+    personality_type = []
+    input_seqs = []
+    first_row = True
+    with open(reddit_csv_file, "r") as csvfile:
+        readCSV = csv.reader(csvfile, delimiter=',')
+        for row in readCSV:
+            if first_row:
+                first_row = False
+            else:
+                personality_type.append(row[0])
+                input_seq = row[1:]
+                # Transform into idx
+                for i in range(len(input_seq)):
+                    if input_seq[i] not in reddit_cnt_voc:
+                        input_seq[i] = 0
+                    else:
+                        input_seq[i] = reddit_cnt_voc[input_seq[i]]
+                input_seqs.append(input_seq)
+    num_reddit_vec = len(input_seqs)
+    transformed_seqs = []
+    input_seqs = np.array(input_seqs)
+    for i in tqdm.tqdm(range(num_reddit_vec)):
+        transformed_seq = decode_sequence(input_seqs[i], encoder_model, decoder_model)
+        transformed_seqs.append(transformed_seq)
+    print(transformed_seqs)
+
+# Load saved estimator model
+def load_estimator(model_file):
+    tf.compat.v1.disable_eager_execution()
+    model = tf.saved_model.load(model_file)
+    return model.signatures["serving_default"]
 
 
-def infer_func(input_seq, target_seq):
-    return input_seq, target_seq
+# Inference based on saved estimator model
+def estimator_inference(input_seq, estimator):
+    target_seq = np.ones((1, embed_text_len)) * start_token_idx
+    target_seq = tf.reshape(tf.convert_to_tensor(target_seq), [1, embed_text_len])
+
+    estimator = load_estimator('saved_model/1607498132')
+
+    input_seq = []
+    with open(new_csv_file, "r") as csvfile:
+        readCSV = csv.reader(csvfile, delimiter=',')
+        for row in readCSV:
+            input_seq = row[0:reddit_vec_len]
+            break
+    for i in range(len(input_seq)):
+        input_seq[i] = float(reddit_cnt_voc[int(input_seq[i])])
+    input_seq = tf.reshape(tf.convert_to_tensor(
+        input_seq, dtype=tf.float32), [1, reddit_vec_len])
+    # Use estimator to do inference
+    # output = estimator_inference(input_seq, estimator)
+
+    target_seq = np.ones((1, embed_text_len)) * start_token_idx
+    target_seq = tf.reshape(tf.convert_to_tensor(
+        target_seq, dtype=tf.float32), [1, embed_text_len])
+    # prediction_result = infer(input_1=tf.convert_to_tensor(input_seq, dtype=tf.float32), input_2=tf.convert_to_tensor(target_seq))
+    # print(model({'input_1': input_seq, 'input_2': target_seq}))
+    with tf.compat.v1.Session() as sess:
+        init = tf.compat.v1.global_variables_initializer()
+        sess.run(init)
+        prediction_result = estimator(input_1=input_seq, input_2=target_seq)
+        output = prediction_result['dense'].eval()
+        print(output.shape)
+        predict_word_idx = np.argmax(output[0][0])
+        print(predict_word_idx)
 
 
 # Currently only run training
 # train_model()
-model = estimator_inference('saved_model/1607498132')
-# print(model.prune('input_1', 'input_2'))
-# print(list(model.signatures.keys()))
-# infer = model.signatures["serving_default"]
-# print(type(infer))
-# object_methods = [method_name for method_name in dir(infer)
-#                   if callable(getattr(infer, method_name))]
-# print(object_methods)
-
-# encoder_model, decoder_model = build_inference_model('/home/shiyu/CS394N/CS394N-Project/checkpoint/model1/model.ckpt-1')
-input_seq = []
-with open(new_csv_file, "r") as csvfile:
-    readCSV = csv.reader(csvfile, delimiter=',')
-    for row in readCSV:
-        input_seq = row[0:reddit_vec_len]
-        break
-for i in range(len(input_seq)):
-    input_seq[i] = float(reddit_cnt_voc[int(input_seq[i])])
-# print(input_seq)
-# print(decode_sequence(np.array(input_seq).reshape(1, len(input_seq)), encoder_model, decoder_model))
-target_seq = np.ones((1, embed_text_len)) * start_token_idx
-# prediction_result = infer(input_1=tf.convert_to_tensor(input_seq, dtype=tf.float32), input_2=tf.convert_to_tensor(target_seq))
-# print(model({'input_1': input_seq, 'input_2': target_seq}))
-prediction_result = model.prune(tf.convert_to_tensor(input_seq), tf.convert_to_tensor(target_seq))
-print(prediction_result)
+encoder_model, decoder_model = build_inference_model('/home/shiyu/CS394N/CS394N-Project/checkpoint_test/model1/model.ckpt-1')
+reddit_vec_to_embed_text(
+    '/home/shiyu/CS394N/CS394N-Project/reddit_preprocessed.csv',
+    encoder_model,
+    decoder_model)
