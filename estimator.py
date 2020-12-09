@@ -7,6 +7,25 @@ import tqdm
 # tf.executing_eagerly()
 # tf.config.experimental_run_functions_eagerly(True)
 
+typename_to_idx = {
+    'INTJ': 0,
+    'INTP': 1,
+    'ENTJ': 2,
+    'ENTP': 3,
+    'INFJ': 4,
+    'INFP': 5,
+    'ENFJ': 6,
+    'ENFP': 7,
+    'ISTJ': 8,
+    'ISFJ': 9,
+    'ESTJ': 10,
+    'ESFJ': 11,
+    'ISTP': 12,
+    'ISFP': 13,
+    'ESTP': 14,
+    'ESFP': 15
+}
+
 old_csv_file = '/home/shiyu/CS394N/CS394N-Project/1.csv'
 new_csv_file = '/home/shiyu/CS394N/CS394N-Project/1_new.csv'
 checkpoint_filepath = '/home/shiyu/CS394N/CS394N-Project/checkpoint'
@@ -249,10 +268,10 @@ def decode_sequence(input_seq, encoder_model, decoder_model):
         # Update states
         states_value = [h, c]
 
-    return np.array(decoded_sentence)
+    return decoded_sentence
 
 
-def reddit_vec_to_embed_text(reddit_csv_file, encoder_model, decoder_model):
+def reddit_vec_to_embed_text(reddit_csv_file, encoder_model, decoder_model, csv_file_to_write):
     personality_type = []
     input_seqs = []
     first_row = True
@@ -267,7 +286,7 @@ def reddit_vec_to_embed_text(reddit_csv_file, encoder_model, decoder_model):
                 # Transform into idx
                 for i in range(len(input_seq)):
                     if input_seq[i] not in reddit_cnt_voc:
-                        input_seq[i] = 0
+                        raise Exception("The input subreddit count token is not in the training vocabulary")
                     else:
                         input_seq[i] = reddit_cnt_voc[input_seq[i]]
                 input_seqs.append(input_seq)
@@ -276,8 +295,16 @@ def reddit_vec_to_embed_text(reddit_csv_file, encoder_model, decoder_model):
     input_seqs = np.array(input_seqs)
     for i in tqdm.tqdm(range(num_reddit_vec)):
         transformed_seq = decode_sequence(input_seqs[i], encoder_model, decoder_model)
-        transformed_seqs.append(transformed_seq)
-    print(transformed_seqs)
+        # Ignore the last 2 end tokens
+        transformed_seqs.append(transformed_seq[:-2])
+
+    # Append to the original dataset
+    with open(csv_file_to_write, 'a+', newline='') as write_obj:
+        # Create a writer object from csv module
+        csv_writer = csv.writer(write_obj)
+        # Add contents of list as last row in the csv file
+        for i in range(len(transformed_seqs)):
+            csv_writer.writerow(transformed_seqs[i] + [typename_to_idx[personality_type[i]]])
 
 # Load saved estimator model
 def load_estimator(model_file):
@@ -309,16 +336,12 @@ def estimator_inference(input_seq, estimator):
     target_seq = np.ones((1, embed_text_len)) * start_token_idx
     target_seq = tf.reshape(tf.convert_to_tensor(
         target_seq, dtype=tf.float32), [1, embed_text_len])
-    # prediction_result = infer(input_1=tf.convert_to_tensor(input_seq, dtype=tf.float32), input_2=tf.convert_to_tensor(target_seq))
-    # print(model({'input_1': input_seq, 'input_2': target_seq}))
     with tf.compat.v1.Session() as sess:
         init = tf.compat.v1.global_variables_initializer()
         sess.run(init)
         prediction_result = estimator(input_1=input_seq, input_2=target_seq)
         output = prediction_result['dense'].eval()
-        print(output.shape)
         predict_word_idx = np.argmax(output[0][0])
-        print(predict_word_idx)
 
 
 # Currently only run training
@@ -327,4 +350,5 @@ encoder_model, decoder_model = build_inference_model('/home/shiyu/CS394N/CS394N-
 reddit_vec_to_embed_text(
     '/home/shiyu/CS394N/CS394N-Project/reddit_preprocessed.csv',
     encoder_model,
-    decoder_model)
+    decoder_model,
+    '/home/shiyu/CS394N/CS394N-Project/dataset1_train.csv')
