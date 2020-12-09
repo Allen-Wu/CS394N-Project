@@ -140,16 +140,13 @@ def my_input_fn(file_path, batch_size, perform_shuffle=False, repeat_count=1):
 
 
 def serving_input_receiver_fn():
-    """Serving input_fn that builds features from placeholders
 
-    Returns
-    -------
-    tf.estimator.export.ServingInputReceiver
-    """
-    number = tf.placeholder(dtype=tf.float32, shape=[None, 1], name='number')
-    receiver_tensors = {'number': number}
-    features = tf.tile(number, multiples=[1, 2])
-    return tf.estimator.export.ServingInputReceiver(features, receiver_tensors)
+    input_1 = tf.compat.v1.placeholder(
+        dtype=tf.float32, shape=[None, reddit_vec_len], name='input_1')
+    input_2 = tf.compat.v1.placeholder(
+        dtype=tf.float32, shape=[None, embed_text_len], name='input_2')
+    receiver_tensors = {'input_1': input_1, 'input_2': input_2}
+    return tf.estimator.export.ServingInputReceiver(receiver_tensors, receiver_tensors)
 
 
 def train_model():
@@ -180,7 +177,7 @@ def train_model():
 
     print('Eval result: {}'.format(eval_result))
 
-    # estimator.export_saved_model('saved_model', serving_input_receiver_fn)
+    estimator.export_saved_model('saved_model', serving_input_receiver_fn)
 
 
 def inference_input(line):
@@ -266,9 +263,30 @@ def decode_sequence(input_seq, encoder_model, decoder_model):
     return decoded_sentence
 
 
+def estimator_inference(model_file):
+    predict_fn = tf.saved_model.load(model_file)
+    print(type(predict_fn))
+    return predict_fn
+    # for nb in my_service():
+    #     pred = predict_fn({'number': [[nb]]})['output']
+
+
+def infer_func(input_seq, target_seq):
+    return input_seq, target_seq
+
+
 # Currently only run training
 # train_model()
-encoder_model, decoder_model = build_inference_model('/home/shiyu/CS394N/CS394N-Project/checkpoint/model1/model.ckpt-1')
+model = estimator_inference('saved_model/1607498132')
+# print(model.prune('input_1', 'input_2'))
+# print(list(model.signatures.keys()))
+# infer = model.signatures["serving_default"]
+# print(type(infer))
+# object_methods = [method_name for method_name in dir(infer)
+#                   if callable(getattr(infer, method_name))]
+# print(object_methods)
+
+# encoder_model, decoder_model = build_inference_model('/home/shiyu/CS394N/CS394N-Project/checkpoint/model1/model.ckpt-1')
 input_seq = []
 with open(new_csv_file, "r") as csvfile:
     readCSV = csv.reader(csvfile, delimiter=',')
@@ -277,5 +295,10 @@ with open(new_csv_file, "r") as csvfile:
         break
 for i in range(len(input_seq)):
     input_seq[i] = float(reddit_cnt_voc[int(input_seq[i])])
-print(input_seq)
-print(decode_sequence(np.array(input_seq).reshape(1, len(input_seq)), encoder_model, decoder_model))
+# print(input_seq)
+# print(decode_sequence(np.array(input_seq).reshape(1, len(input_seq)), encoder_model, decoder_model))
+target_seq = np.ones((1, embed_text_len)) * start_token_idx
+# prediction_result = infer(input_1=tf.convert_to_tensor(input_seq, dtype=tf.float32), input_2=tf.convert_to_tensor(target_seq))
+# print(model({'input_1': input_seq, 'input_2': target_seq}))
+prediction_result = model.prune(tf.convert_to_tensor(input_seq), tf.convert_to_tensor(target_seq))
+print(prediction_result)
