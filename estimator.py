@@ -289,22 +289,30 @@ def reddit_vec_to_embed_text(reddit_csv_file, encoder_model, decoder_model, csv_
 
     append_period = 100
 
+    skip_row_cnt = 0
+
     with open(reddit_csv_file, "r") as csvfile:
         readCSV = csv.reader(csvfile, delimiter=',')
         for row in readCSV:
             if first_row:
                 first_row = False
             else:
+                skip_row = False
                 personality_type.append(row[0])
                 input_seq = row[1:]
                 # Transform into idx
                 for i in range(len(input_seq)):
                     if input_seq[i] not in reddit_cnt_voc:
-                        raise Exception("The input subreddit count token is not in the training vocabulary")
+                        # Skip this row
+                        skip_row_cnt += 1
+                        skip_row = True
+                        break
+                        # raise Exception("The input subreddit count token is not in the training vocabulary")
                         # input_seq[i] = 0
                     else:
                         input_seq[i] = reddit_cnt_voc[input_seq[i]]
-                input_seqs.append(input_seq)
+                if not skip_row:
+                    input_seqs.append(input_seq)
     num_reddit_vec = len(input_seqs)
     transformed_seqs = []
     input_seqs = np.array(input_seqs)
@@ -322,6 +330,7 @@ def reddit_vec_to_embed_text(reddit_csv_file, encoder_model, decoder_model, csv_
                   transformed_seqs,
                   personality_type[(len(personality_type) - len(transformed_seqs)):])
 
+    print('# of rows skipped: {}'.format(str(skip_row_cnt)))
     # Append to the original dataset
     # with open(csv_file_to_write, 'a+', newline='') as write_obj:
     #     # Create a writer object from csv module
