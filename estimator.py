@@ -175,7 +175,7 @@ def train_model():
     tf.get_logger().setLevel('INFO')
     model = build_model(reddit_cnt_voc_size,
                         embed_text_voc_size,
-                        256)
+                        512)
     model.compile(
         optimizer="rmsprop",
         loss="categorical_crossentropy",
@@ -206,7 +206,7 @@ def build_inference_model(model_file):
     # Restore the model and construct the encoder and decoder.
     model = build_model(reddit_cnt_voc_size,
                         embed_text_voc_size,
-                        256)
+                        512)
     model.compile(
         optimizer="rmsprop",
         loss="categorical_crossentropy",
@@ -222,8 +222,8 @@ def build_inference_model(model_file):
 
     # Decoder
     decoder_inputs = model.input[1]  # input_2
-    decoder_state_input_h = tf.keras.Input(shape=(256,), name="input_3")
-    decoder_state_input_c = tf.keras.Input(shape=(256,), name="input_4")
+    decoder_state_input_h = tf.keras.Input(shape=(512,), name="input_3")
+    decoder_state_input_c = tf.keras.Input(shape=(512,), name="input_4")
     decoder_states_inputs = [decoder_state_input_h, decoder_state_input_c]
     decoder_embed = model.layers[3]
     decoder_lstm = model.layers[5]
@@ -271,10 +271,24 @@ def decode_sequence(input_seq, encoder_model, decoder_model):
     return decoded_sentence
 
 
+def append_to_csv(csv_file_to_write, transformed_seqs, personality_type):
+    # Append to the original dataset
+    with open(csv_file_to_write, 'a+', newline='') as write_obj:
+        # Create a writer object from csv module
+        csv_writer = csv.writer(write_obj)
+        # Add contents of list as last row in the csv file
+        for i in range(len(transformed_seqs)):
+            csv_writer.writerow(
+                transformed_seqs[i] + [typename_to_idx[personality_type[i]]])
+
+
 def reddit_vec_to_embed_text(reddit_csv_file, encoder_model, decoder_model, csv_file_to_write):
     personality_type = []
     input_seqs = []
     first_row = True
+
+    append_period = 100
+
     with open(reddit_csv_file, "r") as csvfile:
         readCSV = csv.reader(csvfile, delimiter=',')
         for row in readCSV:
@@ -287,6 +301,7 @@ def reddit_vec_to_embed_text(reddit_csv_file, encoder_model, decoder_model, csv_
                 for i in range(len(input_seq)):
                     if input_seq[i] not in reddit_cnt_voc:
                         raise Exception("The input subreddit count token is not in the training vocabulary")
+                        # input_seq[i] = 0
                     else:
                         input_seq[i] = reddit_cnt_voc[input_seq[i]]
                 input_seqs.append(input_seq)
@@ -294,17 +309,26 @@ def reddit_vec_to_embed_text(reddit_csv_file, encoder_model, decoder_model, csv_
     transformed_seqs = []
     input_seqs = np.array(input_seqs)
     for i in tqdm.tqdm(range(num_reddit_vec)):
+        # Append per append_period
+        if (i % append_period) == 0:
+            append_to_csv(csv_file_to_write, transformed_seqs, personality_type[(i - append_period):i])
+            transformed_seqs = []
         transformed_seq = decode_sequence(input_seqs[i], encoder_model, decoder_model)
         # Ignore the last 2 end tokens
         transformed_seqs.append(transformed_seq[:-2])
 
+    # Append the remaining
+    append_to_csv(csv_file_to_write,
+                  transformed_seqs,
+                  personality_type[(len(personality_type) - len(transformed_seqs)):])
+
     # Append to the original dataset
-    with open(csv_file_to_write, 'a+', newline='') as write_obj:
-        # Create a writer object from csv module
-        csv_writer = csv.writer(write_obj)
-        # Add contents of list as last row in the csv file
-        for i in range(len(transformed_seqs)):
-            csv_writer.writerow(transformed_seqs[i] + [typename_to_idx[personality_type[i]]])
+    # with open(csv_file_to_write, 'a+', newline='') as write_obj:
+    #     # Create a writer object from csv module
+    #     csv_writer = csv.writer(write_obj)
+    #     # Add contents of list as last row in the csv file
+    #     for i in range(len(transformed_seqs)):
+    #         csv_writer.writerow(transformed_seqs[i] + [typename_to_idx[personality_type[i]]])
 
 # Load saved estimator model
 def load_estimator(model_file):
