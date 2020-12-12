@@ -149,7 +149,7 @@ def my_input_fn(file_path, batch_size, perform_shuffle=False, repeat_count=1):
     dataset = (tf.data.TextLineDataset(file_path) # Read text file
                .map(decode_csv_wrapper))  # Transform each elem by applying decode_csv fn
     if perform_shuffle:
-        # Randomizes input using a window of 256 elements (read into memory)
+        # Randomizes input using a window of 512 elements (read into memory)
         dataset = dataset.shuffle(buffer_size=32*batch_size)
     dataset = dataset.repeat(repeat_count) # Repeats dataset this # times
     dataset = dataset.batch(batch_size)  # Batch size to use
@@ -263,7 +263,8 @@ def decode_sequence(input_seq, encoder_model, decoder_model):
         decoded_sentence.append(sampled_char)
 
         # Update the target sequence (of length 1).
-        target_seq[0][i] = sampled_token_index
+        # target_seq[0][i] = sampled_token_index
+        target_seq = np.ones((1, embed_text_len)) * sampled_token_index
 
         # Update states
         states_value = [h, c]
@@ -287,7 +288,7 @@ def reddit_vec_to_embed_text(reddit_csv_file, encoder_model, decoder_model, csv_
     input_seqs = []
     first_row = True
 
-    append_period = 100
+    append_period = 10
 
     skip_row_cnt = 0
 
@@ -302,7 +303,7 @@ def reddit_vec_to_embed_text(reddit_csv_file, encoder_model, decoder_model, csv_
                 input_seq = row[1:]
                 # Transform into idx
                 for i in range(len(input_seq)):
-                    if input_seq[i] not in reddit_cnt_voc:
+                    if int(input_seq[i]) not in reddit_cnt_voc:
                         # Skip this row
                         skip_row_cnt += 1
                         skip_row = True
@@ -310,7 +311,7 @@ def reddit_vec_to_embed_text(reddit_csv_file, encoder_model, decoder_model, csv_
                         # raise Exception("The input subreddit count token is not in the training vocabulary")
                         # input_seq[i] = 0
                     else:
-                        input_seq[i] = reddit_cnt_voc[input_seq[i]]
+                        input_seq[i] = reddit_cnt_voc[int(input_seq[i])]
                 if not skip_row:
                     input_seqs.append(input_seq)
     num_reddit_vec = len(input_seqs)
