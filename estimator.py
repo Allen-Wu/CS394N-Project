@@ -221,11 +221,17 @@ def build_inference_model(model_file):
     encoder_model = tf.keras.Model(encoder_inputs, encoder_states)
 
     # Decoder
-    decoder_inputs = model.input[1]  # input_2
-    decoder_state_input_h = tf.keras.Input(shape=(512,), name="input_3")
-    decoder_state_input_c = tf.keras.Input(shape=(512,), name="input_4")
+    # decoder_inputs = model.input[1]  # input_2
+
+    decoder_inputs = tf.keras.Input(shape=(1), name='input_3')
+    # Embed layer embed_text_voc_size
+    decoder_embed = tf.keras.layers.Embedding(
+        embed_text_voc_size, embed_text_voc_size, input_length=1)
+
+    decoder_state_input_h = tf.keras.Input(shape=(512,), name="input_4")
+    decoder_state_input_c = tf.keras.Input(shape=(512,), name="input_5")
     decoder_states_inputs = [decoder_state_input_h, decoder_state_input_c]
-    decoder_embed = model.layers[3]
+    # decoder_embed = model.layers[3]
     decoder_lstm = model.layers[5]
     decoder_outputs, state_h_dec, state_c_dec = decoder_lstm(
         decoder_embed(decoder_inputs), initial_state=decoder_states_inputs
@@ -250,7 +256,7 @@ def decode_sequence(input_seq, encoder_model, decoder_model):
     states_value = [last_h, last_c]
 
     # Generate empty target sequence of length 1.
-    target_seq = np.ones((1, embed_text_len)) * start_token_idx
+    target_seq = np.array([float(start_token_idx)])
 
     decoded_sentence = []
     for i in range(embed_text_len):
@@ -258,13 +264,13 @@ def decode_sequence(input_seq, encoder_model, decoder_model):
             [target_seq] + states_value)
 
         # Sample a token
-        sampled_token_index = np.argmax(output_tokens[0, i, :])
+        sampled_token_index = np.argmax(output_tokens[0, 0, :])
         sampled_char = reverse_embed_text_voc[sampled_token_index]
         decoded_sentence.append(sampled_char)
 
         # Update the target sequence (of length 1).
         # target_seq[0][i] = sampled_token_index
-        target_seq = np.ones((1, embed_text_len)) * sampled_token_index
+        target_seq = np.array([float(sampled_token_index)])
 
         # Update states
         states_value = [h, c]
